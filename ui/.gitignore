@@ -1,0 +1,11 @@
+node_modules
+.env.local
+.env.*.local
+dist
+dist-ssr
+*.local
+.DS_Store
+*.pem
+*.key
+.vite
+.eslintcache

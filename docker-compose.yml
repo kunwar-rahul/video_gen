@@ -1,0 +1,133 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: video-gen-api
+    ports:
+      - "8080:8080"
+    environment:
+      - STORAGE_URL=http://minio:9000
+      - STORAGE_ACCESS_KEY=minioadmin
+      - STORAGE_SECRET_KEY=minioadmin
+      - PEXELS_API_KEY=${PEXELS_API_KEY:-}
+      - REDIS_URL=redis://redis:6379/0
+      - ORCHESTRATOR_URL=http://orchestrator:8081
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      - minio
+      - redis
+    networks:
+      - video-gen-network
+    restart: unless-stopped
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    container_name: video-gen-orchestrator
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - RETRIEVER_URL=http://retriever:8082
+      - WHISPER_URL=http://whisper:8083
+      - RENDERER_URL=http://renderer:8084
+      - LOG_LEVEL=DEBUG
+      - ENABLE_WEBHOOKS=true
+    depends_on:
+      - redis
+      - retriever
+    networks:
+      - video-gen-network
+    restart: unless-stopped
+
+  retriever:
+    build:
+      context: .
+      dockerfile: Dockerfile.retriever
+    container_name: video-gen-retriever
+    ports:
+      - "8082:8082"
+    environment:
+      - PEXELS_API_KEY=${PEXELS_API_KEY:-}
+      - STORAGE_URL=http://minio:9000
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      - minio
+    networks:
+      - video-gen-network
+    restart: unless-stopped
+
+  whisper:
+    build:
+      context: .
+      dockerfile: Dockerfile.whisper
+    container_name: video-gen-whisper
+    ports:
+      - "8083:8083"
+    environment:
+      - WHISPER_MODEL=base
+      - WHISPER_DEVICE=cpu
+      - TTS_ENGINE=gtts
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      - redis
+    networks:
+      - video-gen-network
+    volumes:
+      - /tmp:/tmp
+    restart: unless-stopped
+
+  renderer:
+    build:
+      context: .
+      dockerfile: Dockerfile.renderer
+    container_name: video-gen-renderer
+    ports:
+      - "8084:8084"
+    environment:
+      - STORAGE_URL=http://minio:9000
+      - TARGET_RESOLUTION=1920x1080
+      - TARGET_FPS=30
+      - FFMPEG_PRESET=medium
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      - minio
+    networks:
+      - video-gen-network
+    volumes:
+      - /tmp:/tmp
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: video-gen-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - video-gen-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: video-gen-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - video-gen-network
+    restart: unless-stopped
+
+volumes:
+  minio-data:
+
+networks:
+  video-gen-network:
+    driver: bridge
